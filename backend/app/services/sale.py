@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models.inventory import InventoryMovement
 from app.models.product import Product
 from app.models.sale import Sale, SaleItem
+from app.services.sync_outbox import SyncOutboxService
 
 
 class SaleService:
@@ -84,5 +85,28 @@ class SaleService:
             db.flush()
 
             sale.items = sale_items
+
+            # Ajout de l'opération à synchroniser
+            SyncOutboxService.add(
+                db=db,
+                tenant_id=tenant_id,
+                operation="create",
+                entity="sale",
+                entity_id=sale.id,
+                payload={
+                    "sale_id": str(sale.id),
+                    "tenant_id": str(tenant_id),
+                    "total": str(total),
+                    "items": [
+                        {
+                            "product_id": str(item.product_id),
+                            "quantity": item.quantity,
+                            "unit_price": str(item.unit_price),
+                            "subtotal": str(item.subtotal),
+                        }
+                        for item in sale_items
+                    ],
+                },
+            )
 
         return sale

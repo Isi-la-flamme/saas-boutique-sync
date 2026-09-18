@@ -1,0 +1,31 @@
+import json
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+
+from app.models.sync_outbox import SyncOutbox
+
+
+class SyncOutboxService:
+
+    @staticmethod
+    def add(
+        db: Session,
+        tenant_id: UUID,
+        operation: str,
+        entity: str,
+        entity_id: UUID,
+        payload: dict,
+    ) -> SyncOutbox:
+
+        outbox = SyncOutbox(
+            tenant_id=tenant_id,
+            operation=operation,
+            entity=entity,
+            entity_id=entity_id,
+            payload=json.dumps(payload),
+        )
+
+        db.add(outbox)
+
+        return outbox
