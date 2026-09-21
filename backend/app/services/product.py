@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.product import Product
+from app.services.sync_outbox import SyncOutboxService
 
 
 class ProductService:
@@ -25,6 +26,23 @@ class ProductService:
         )
 
         db.add(product)
+        db.flush()
+
+        SyncOutboxService.add(
+            db=db,
+            tenant_id=tenant_id,
+            operation="create",
+            entity="product",
+            entity_id=product.id,
+            payload={
+                "product_id": str(product.id),
+                "tenant_id": str(tenant_id),
+                "name": product.name,
+                "price": float(product.price),
+                "stock": product.stock,
+            },
+        )
+
         db.commit()
         db.refresh(product)
 

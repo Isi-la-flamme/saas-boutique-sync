@@ -1,5 +1,6 @@
-from contextlib import asynccontextmanager
+# Les imports system et libs
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -11,6 +12,7 @@ from app.models.inventory import InventoryMovement
 from app.models.user import User
 from app.models.sale import Sale
 from app.models.sync_outbox import SyncOutbox
+from app.models.product import Product
 
 from app.services.sync_worker import sync_worker
 

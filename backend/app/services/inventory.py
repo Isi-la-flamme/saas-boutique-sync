@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.inventory import InventoryMovement
 from app.models.product import Product
+from app.services.sync_outbox import SyncOutboxService
 
 
 class InventoryService:
@@ -40,7 +41,6 @@ class InventoryService:
                 raise ValueError("Stock insuffisant.")
 
             product.stock -= quantity
-
         else:
             product.stock += quantity
 
@@ -52,6 +52,23 @@ class InventoryService:
         )
 
         db.add(movement)
+        db.flush()
+
+        SyncOutboxService.add(
+            db=db,
+            tenant_id=tenant_id,
+            operation="create",
+            entity="inventory_movement",
+            entity_id=movement.id,
+            payload={
+                "movement_id": str(movement.id),
+                "tenant_id": str(tenant_id),
+                "product_id": str(product_id),
+                "type": movement_type,
+                "quantity": quantity,
+            },
+        )
+
         db.commit()
         db.refresh(movement)
 

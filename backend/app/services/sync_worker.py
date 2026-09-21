@@ -1,14 +1,23 @@
 import asyncio
 import json
+import os
+
 
 import httpx
 
 from sqlalchemy import select
+from dotenv import load_dotenv
 
 from app.core.database import SessionLocal
 from app.models.sync_outbox import SyncOutbox
 from app.models.tenant import Tenant
 
+load_dotenv()
+
+SYNC_SERVER_URL = os.getenv("SYNC_SERVER_URL")
+
+if not SYNC_SERVER_URL:
+    raise RuntimeError("SYNC_SERVER_URL doit être défini dans le fichier .env")
 
 class SyncWorker:
 
@@ -69,8 +78,7 @@ class SyncWorker:
 
             payload = json.loads(operation.payload)
 
-            sync_url = "http://127.0.0.1:8000/sync"
-
+            sync_url = f"{SYNC_SERVER_URL}/sync"
             response = await self._send_operation(
                 sync_url,
                 operation,

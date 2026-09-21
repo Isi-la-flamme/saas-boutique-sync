@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+argon2-cffi
+email-validator
+PyJWT
+httpx
+python-dotenv
