@@ -2,15 +2,13 @@ import asyncio
 import json
 import os
 
-
 import httpx
-
-from sqlalchemy import select
 from dotenv import load_dotenv
+from sqlalchemy import select
 
 from app.core.database import SessionLocal
 from app.models.sync_outbox import SyncOutbox
-from app.models.tenant import Tenant
+
 
 load_dotenv()
 
@@ -18,6 +16,7 @@ SYNC_SERVER_URL = os.getenv("SYNC_SERVER_URL")
 
 if not SYNC_SERVER_URL:
     raise RuntimeError("SYNC_SERVER_URL doit être défini dans le fichier .env")
+
 
 class SyncWorker:
 
@@ -45,12 +44,15 @@ class SyncWorker:
             except asyncio.CancelledError:
                 pass
 
+            self.task = None
+
         print("🛑 Sync worker arrêté")
 
     async def _loop(self):
         while self.running:
             try:
                 await self.process_pending()
+
             except Exception as exc:
                 print(f"⚠️ Erreur sync : {exc}")
 
@@ -79,23 +81,39 @@ class SyncWorker:
             payload = json.loads(operation.payload)
 
             sync_url = f"{SYNC_SERVER_URL}/sync"
+
             response = await self._send_operation(
                 sync_url,
                 operation,
                 payload,
             )
 
-            if response.status_code != 200:
+            if response.status_code == 200:
+                operation.synced = True
+                db.commit()
+
+                print("✅ Opération synchronisée")
+                return
+
+            if 500 <= response.status_code < 600:
                 raise RuntimeError(
-                    f"Serveur sync HTTP {response.status_code}: "
-                    f"{response.text}"
+                    f"Serveur sync HTTP {response.status_code}"
                 )
 
-            operation.synced = True
-            db.commit()
+            if 400 <= response.status_code < 500:
+                print(
+                    f"❌ Erreur client HTTP {response.status_code} : "
+                    f"{response.text}"
+                )
+                return
 
-            print("✅ Opération synchronisée")
+            raise RuntimeError(
+                f"Réponse sync inattendue HTTP {response.status_code}"
+            )
 
+        except httpx.RequestError as exc:
+            db.rollback()
+            print(f"🌐 Réseau indisponible : {exc}")
 
         except Exception:
             db.rollback()
@@ -105,24 +123,24 @@ class SyncWorker:
             db.close()
 
     async def _send_operation(
-            self,
-            sync_url,
-            operation,
-            payload,
-        ):
-            data = {
-                "entity": operation.entity,
-                "operation": operation.operation,
-                "tenant_id": str(operation.tenant_id),
-                "entity_id": str(operation.entity_id),
-                "payload": payload,
-            }
+        self,
+        sync_url,
+        operation,
+        payload,
+    ):
+        data = {
+            "entity": operation.entity,
+            "operation": operation.operation,
+            "tenant_id": str(operation.tenant_id),
+            "entity_id": str(operation.entity_id),
+            "payload": payload,
+        }
 
-            async with httpx.AsyncClient(timeout=10) as client:
-                return await client.post(
-                    sync_url,
-                    json=data,
-                )
+        async with httpx.AsyncClient(timeout=10) as client:
+            return await client.post(
+                sync_url,
+                json=data,
+            )
 
 
 sync_worker = SyncWorker()
