@@ -1,39 +1,44 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
+from uuid import UUID
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.middlewares.auth import get_current_user
 from app.models.sync_outbox import SyncOutbox
+
 
 router = APIRouter(prefix="/sync", tags=["Sync"])
 
 
-@router.post("")
-def receive_sync(
-    operation: dict,
+@router.get("/status")
+def sync_status(
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    entity = operation.get("entity")
-    action = operation.get("operation")
-    tenant_id = operation.get("tenant_id")
-    entity_id = operation.get("entity_id")
-    payload = operation.get("payload")
+    tenant_id = UUID(current_user["tenant_id"])
 
-    if not all([entity, action, tenant_id, entity_id, payload]):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid synchronization payload",
+    pending = db.scalar(
+        select(func.count())
+        .select_from(SyncOutbox)
+        .where(
+            SyncOutbox.tenant_id == tenant_id,
+            SyncOutbox.synced.is_(False),
         )
-
-    print(
-        f"📥 Sync reçue : "
-        f"{entity}/{action} "
-        f"tenant={tenant_id}"
     )
 
-    # Pour l'instant on accuse réception.
-    # Le traitement métier réel viendra juste après.
+    synced = db.scalar(
+        select(func.count())
+        .select_from(SyncOutbox)
+        .where(
+            SyncOutbox.tenant_id == tenant_id,
+            SyncOutbox.synced.is_(True),
+        )
+    )
+
     return {
-        "status": "accepted",
-        "entity": entity,
-        "entity_id": entity_id,
+        "pending": pending,
+        "synced": synced,
+        "total": pending + synced,
     }
