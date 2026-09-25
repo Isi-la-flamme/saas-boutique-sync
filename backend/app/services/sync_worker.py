@@ -12,6 +12,7 @@ from app.models.product import Product
 from app.models.sync_outbox import SyncOutbox
 from app.models.inventory import InventoryMovement
 from app.models.sync_state import SyncState
+from app.models.sale import Sale, SaleItem
 
 
 load_dotenv()
@@ -289,6 +290,43 @@ class SyncWorker:
             db.add(movement)
 
             print(f"📦 Mouvement reçu du central : {movement_id}")
+            return
+
+        if entity == "sale" and action == "create":
+            sale_id = UUID(payload["sale_id"])
+            tenant_id = UUID(payload["tenant_id"])
+
+            existing = db.scalar(
+                select(Sale).where(
+                    Sale.id == sale_id,
+                    Sale.tenant_id == tenant_id,
+                )
+            )
+
+            if existing:
+                print(f"⏭️ Vente déjà présente : {sale_id}")
+                return
+
+            sale = Sale(
+                id=sale_id,
+                tenant_id=tenant_id,
+                total=payload["total"],
+            )
+
+            db.add(sale)
+            db.flush()
+
+            for item in payload["items"]:
+                sale_item = SaleItem(
+                    sale_id=sale_id,
+                    product_id=UUID(item["product_id"]),
+                    quantity=item["quantity"],
+                    unit_price=item["unit_price"],
+                    subtotal=item["subtotal"],
+                )
+                db.add(sale_item)
+
+            print(f"🧾 Vente reçue du central : {sale_id}")
             return
 
         raise RuntimeError(
