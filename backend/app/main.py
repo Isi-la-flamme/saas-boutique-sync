@@ -1,11 +1,10 @@
-# Les imports system et libs
-
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.database import Base, engine, get_db
+from app.core.database import Base, engine, get_db, SessionLocal
 
 from app.models.tenant import Tenant
 from app.models.inventory import InventoryMovement
@@ -13,8 +12,10 @@ from app.models.user import User
 from app.models.sale import Sale
 from app.models.sync_outbox import SyncOutbox
 from app.models.product import Product
+from app.models.sync_state import SyncState
 
 from app.services.sync_worker import sync_worker
+
 
 from app.routers.tenant import router as tenant_router
 from app.routers.user import router as user_router
@@ -26,6 +27,28 @@ from app.routers.sale import router as sale_router
 
 
 Base.metadata.create_all(bind=engine)
+
+
+def init_sync_state():
+    db = SessionLocal()
+
+    try:
+        state = db.get(SyncState, 1)
+
+        if not state:
+            db.add(
+                SyncState(
+                    id=1,
+                    last_sequence=0,
+                )
+            )
+            db.commit()
+
+    finally:
+        db.close()
+
+
+init_sync_state()
 
 
 @asynccontextmanager
