@@ -21,7 +21,9 @@ app = FastAPI(
 
 
 @app.get("/health")
-def health(db: Session = Depends(get_db)):
+def health(
+    db: Session = Depends(get_db),
+):
     try:
         db.execute(text("SELECT 1"))
 
@@ -78,7 +80,6 @@ def receive_sync(
 
     # 2. Synchronisation d'un produit
     if entity == "product" and action == "create":
-
         product_id = str(payload["product_id"])
 
         existing_product = db.query(Product).filter(
@@ -99,7 +100,6 @@ def receive_sync(
 
     # 3. Synchronisation d'un mouvement de stock
     elif entity == "inventory_movement" and action == "create":
-
         movement_id = str(payload["movement_id"])
         product_id = str(payload["product_id"])
         movement_type = payload["type"]
@@ -126,7 +126,6 @@ def receive_sync(
             product.stock += quantity
 
         elif movement_type == "out":
-
             if product.stock < quantity:
                 raise HTTPException(
                     status_code=400,
@@ -153,7 +152,6 @@ def receive_sync(
 
     # 4. Synchronisation d'une vente
     elif entity == "sale" and action == "create":
-
         sale_id = str(payload["sale_id"])
 
         existing_sale = db.query(Sale).filter(
@@ -162,7 +160,6 @@ def receive_sync(
         ).first()
 
         if not existing_sale:
-
             sale = Sale(
                 id=sale_id,
                 tenant_id=tenant_id,
@@ -172,7 +169,6 @@ def receive_sync(
             db.add(sale)
 
             for item in payload["items"]:
-
                 product_id = str(item["product_id"])
                 quantity = int(item["quantity"])
 
@@ -248,4 +244,41 @@ def receive_sync(
     return {
         "status": "accepted",
         "operation_id": str(sync_operation.id),
+    }
+
+
+@app.get("/sync/pull")
+def pull_sync(
+    tenant_id: str,
+    after: int = 0,
+    db: Session = Depends(get_db),
+):
+    operations = (
+        db.query(SyncOperation)
+        .filter(
+            SyncOperation.tenant_id == tenant_id,
+            SyncOperation.sequence > after,
+        )
+        .order_by(SyncOperation.sequence.asc())
+        .limit(100)
+        .all()
+    )
+
+    return {
+        "operations": [
+            {
+                "sequence": operation.sequence,
+                "entity": operation.entity,
+                "operation": operation.operation,
+                "tenant_id": operation.tenant_id,
+                "entity_id": operation.entity_id,
+                "payload": json.loads(operation.payload),
+            }
+            for operation in operations
+        ],
+        "next_sequence": (
+            operations[-1].sequence
+            if operations
+            else after
+        ),
     }

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import DateTime, Identity, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -13,6 +13,13 @@ class SyncOperation(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True,
         default=uuid.uuid4,
+    )
+    sequence: Mapped[int] = mapped_column(
+        Integer,
+        Identity(),
+        nullable=False,
+        unique=True,
+        index=True,
     )
 
     tenant_id: Mapped[str] = mapped_column(
