@@ -22,6 +22,12 @@ class SyncOperation(Base):
         index=True,
     )
 
+    node_id: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True,
+    )
+    
     tenant_id: Mapped[str] = mapped_column(
         String(100),
         nullable=False,

@@ -21,6 +21,13 @@ class SyncOutbox(Base):
         index=True,
     )
 
+    node_id: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True,
+        
+    )
+
     operation: Mapped[str] = mapped_column(
         String(50),
         nullable=False,

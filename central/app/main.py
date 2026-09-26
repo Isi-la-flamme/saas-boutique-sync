@@ -47,6 +47,7 @@ def receive_sync(
     required = [
         "entity",
         "operation",
+        "node_id",
         "tenant_id",
         "entity_id",
         "payload",
@@ -60,6 +61,7 @@ def receive_sync(
 
     entity = operation["entity"]
     action = operation["operation"]
+    node_id = operation["node_id"]
     tenant_id = str(operation["tenant_id"])
     entity_id = str(operation["entity_id"])
     payload = operation["payload"]
@@ -219,6 +221,7 @@ def receive_sync(
     # 5. Enregistrer l'opération reçue
     sync_operation = SyncOperation(
         tenant_id=tenant_id,
+        node_id=node_id,
         operation=action,
         entity=entity,
         entity_id=entity_id,

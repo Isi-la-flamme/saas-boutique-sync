@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 
+from app.core.config import NODE_ID, TENANT_ID
+
 import httpx
 from dotenv import load_dotenv
 from sqlalchemy import select
@@ -13,6 +15,7 @@ from app.models.sync_outbox import SyncOutbox
 from app.models.inventory import InventoryMovement
 from app.models.sync_state import SyncState
 from app.models.sale import Sale, SaleItem
+
 
 
 load_dotenv()
@@ -156,18 +159,17 @@ class SyncWorker:
 
             last_sequence = state.last_sequence
 
-            tenant_id = os.getenv("TENANT_ID")
 
-            if not tenant_id:
+            if not TENANT_ID:
                 raise RuntimeError("TENANT_ID doit être défini dans le fichier .env")
 
-            if not tenant_id:
+            if not TENANT_ID:
                 return
 
             pull_url = f"{SYNC_SERVER_URL}/sync/pull"
 
             params = {
-                "tenant_id": str(tenant_id),
+                "tenant_id": str(TENANT_ID),
                 "after": last_sequence,
             }
 
@@ -346,6 +348,7 @@ class SyncWorker:
         data = {
             "entity": operation.entity,
             "operation": operation.operation,
+            "node_id": operation.node_id,
             "tenant_id": str(operation.tenant_id),
             "entity_id": str(operation.entity_id),
             "payload": payload,
