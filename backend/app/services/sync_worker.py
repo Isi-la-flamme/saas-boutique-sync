@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from sqlalchemy import select
 from uuid import UUID
 
+from app.models.tenant import Tenant
 from app.core.database import SessionLocal
 from app.models.product import Product
 from app.models.sync_outbox import SyncOutbox
@@ -37,6 +38,8 @@ class SyncWorker:
     async def start(self):
         if self.running:
             return
+
+        await self.bootstrap_if_needed()
 
         self.running = True
         self.task = asyncio.create_task(self._loop())
@@ -72,6 +75,140 @@ class SyncWorker:
     # =========================================================
     # LOCAL → CENTRAL
     # =========================================================
+
+
+    async def bootstrap_if_needed(self):
+        db = SessionLocal()
+
+        try:
+            if not TENANT_ID:
+                raise RuntimeError(
+                    "TENANT_ID doit être défini dans le fichier .env"
+                )
+
+            tenant_id = UUID(str(TENANT_ID))
+
+            tenant = db.get(Tenant, tenant_id)
+
+            if tenant:
+                print("✅ Base locale déjà initialisée")
+                return
+
+            print("🆕 Première installation détectée")
+            print("📥 Bootstrap depuis le central...")
+
+            bootstrap_url = f"{SYNC_SERVER_URL}/sync/bootstrap"
+
+            params = {
+                "tenant_id": str(TENANT_ID),
+                "node_id": NODE_ID,
+            }
+
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(
+                    bootstrap_url,
+                    params=params,
+                )
+
+            if response.status_code != 200:
+                raise RuntimeError(
+                    f"Bootstrap HTTP {response.status_code}: "
+                    f"{response.text}"
+                )
+
+            data = response.json()
+
+            tenant_data = data["tenant"]
+
+            tenant = Tenant(
+                id=UUID(tenant_data["id"]),
+                name=tenant_data["name"],
+                slug=tenant_data["slug"],
+                is_active=tenant_data["is_active"],
+            )
+
+            db.add(tenant)
+
+            for product_data in data.get("products", []):
+                product = Product(
+                    id=UUID(product_data["id"]),
+                    tenant_id=UUID(product_data["tenant_id"]),
+                    name=product_data["name"],
+                    price=product_data["price"],
+                    stock=product_data["stock"],
+                )
+                db.add(product)
+
+            for movement_data in data.get(
+                "inventory_movements",
+                [],
+            ):
+                movement = InventoryMovement(
+                    id=UUID(movement_data["id"]),
+                    tenant_id=UUID(movement_data["tenant_id"]),
+                    product_id=UUID(movement_data["product_id"]),
+                    type=movement_data["type"],
+                    quantity=movement_data["quantity"],
+                )
+                db.add(movement)
+
+            for sale_data in data.get("sales", []):
+                sale = Sale(
+                    id=UUID(sale_data["id"]),
+                    tenant_id=UUID(sale_data["tenant_id"]),
+                    total=sale_data["total"],
+                )
+
+                db.add(sale)
+                db.flush()
+
+                for item_data in sale_data.get("items", []):
+                    sale_item = SaleItem(
+                        sale_id=UUID(sale_data["id"]),
+                        product_id=UUID(item_data["product_id"]),
+                        quantity=item_data["quantity"],
+                        unit_price=item_data["unit_price"],
+                        subtotal=item_data["subtotal"],
+                    )
+
+                    db.add(sale_item)
+
+            state = db.get(SyncState, 1)
+
+            if not state:
+                state = SyncState(
+                    id=1,
+                    last_sequence=data.get(
+                        "last_sequence",
+                        0,
+                    ),
+                )
+                db.add(state)
+            else:
+                state.last_sequence = data.get(
+                    "last_sequence",
+                    0,
+                )
+
+            db.commit()
+
+            print(
+                f"✅ Bootstrap terminé — "
+                f"last_sequence={state.last_sequence}"
+            )
+
+        except httpx.RequestError as exc:
+            db.rollback()
+            print(f"🌐 Central inaccessible : {exc}")
+            raise
+
+        except Exception:
+            db.rollback()
+            raise
+
+        finally:
+            db.close()
+
 
     async def process_pending(self):
         db = SessionLocal()
@@ -170,6 +307,7 @@ class SyncWorker:
 
             params = {
                 "tenant_id": str(TENANT_ID),
+                "node_id": NODE_ID,
                 "after": last_sequence,
             }
 
@@ -201,7 +339,10 @@ class SyncWorker:
                     operation,
                 )
 
-                state.last_sequence = operation["sequence"]
+            state.last_sequence = data.get(
+                "next_sequence",
+                last_sequence,
+            )
 
             db.commit()
 
