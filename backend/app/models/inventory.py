@@ -1,13 +1,18 @@
+
+
+
+
 import uuid
 from datetime import datetime, timezone
-
 from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
-
 from app.core.database import Base
 
 
 class InventoryMovement(Base):
+
+    """ La class du mouvement d'inventaire IN/OFF et tous ses attribut ..."""
+
     __tablename__ = "inventory_movements"
 
     id: Mapped[uuid.UUID] = mapped_column(
